@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-notes-scanner",
+  "name": "Notes Scanner",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Scan notes based on a query with support of an AI model if you want",
+  "author": "skakau",
+  "authorUrl": "https://github.com/splusk",
+  "isDesktopOnly": false
+}

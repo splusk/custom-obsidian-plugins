@@ -1,0 +1,11 @@
+{
+	"id": "obsidian-link-with-icon",
+	"name": "Link with Icon",
+	"version": "1.0.0",
+	"minAppVersion": "0.0.1",
+	"description": "Add an icon to links in Obsidian.",
+	"author": "skakau",
+	"authorUrl": "https://obsidian.md",
+	"fundingUrl": "https://obsidian.md/pricing",
+	"isDesktopOnly": false
+}

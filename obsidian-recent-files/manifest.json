@@ -1,0 +1,11 @@
+{
+	"id": "obsidian-recent-files",
+	"name": "Recent Files",
+	"version": "1.0.0",
+	"minAppVersion": "0.0.1",
+	"description": "Show recent files in modal to be selected and opened",
+	"author": "skakau",
+	"authorUrl": "https://obsidian.md",
+	"fundingUrl": "https://obsidian.md/pricing",
+	"isDesktopOnly": false
+}

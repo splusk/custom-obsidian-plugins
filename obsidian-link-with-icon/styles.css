@@ -1,0 +1,36 @@
+/*
+
+This CSS file will be included with your plugin, and
+available in the app when your plugin is enabled.
+
+If your plugin does not need CSS, delete this file.
+
+*/
+.recent-files-root {
+  justify-content: space-between;
+  font-size: x-large;
+}
+
+.recent-files-title {
+  display: flex;
+  justify-content: space-between;
+  font-size: large;
+}
+
+.recent-files-title-content {
+  flex-grow: 1;
+}
+
+.recent-files-selected {
+  background: grey
+}
+
+.recent-files-title:hover .recent-files-file-delete {
+  display: block;
+  cursor: pointer;
+}
+
+.recent-files-search-box {
+  width: 100%;
+  margin-bottom: 15px;
+}

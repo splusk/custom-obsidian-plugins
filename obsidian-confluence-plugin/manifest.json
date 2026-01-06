@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-confluence-sync",
+  "name": "Confluence Sync",
+  "version": "1.2.0",
+  "minAppVersion": "0.15.0",
+  "description": "Sync your Obsidian notes to Confluence",
+  "author": "skakau",
+  "authorUrl": "https://shanekakau.com",
+  "isDesktopOnly": false
+}

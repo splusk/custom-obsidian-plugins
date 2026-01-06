@@ -1,0 +1,9 @@
+{
+	"id": "obsidian-open-in-browser",
+	"name": "Open in Browser",
+	"version": "1.0.0",
+	"description": "Open markdown file in your default browser",
+	"minAppVersion": "0.15.0",
+	"author": "skakau",
+	"isDesktopOnly": true
+}

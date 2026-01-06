@@ -1,0 +1,163 @@
+/* Sidebar View Styles */
+.note-scanner-view {
+	padding: 16px;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.note-scanner-view h2 {
+	margin: 0 0 0px 0;
+	padding-bottom: 8px;
+	border-bottom: 2px solid var(--background-modifier-border);
+	font-size: 1.3em;
+	font-weight: 600;
+}
+
+.note-scanner-view h3 {
+	margin: 16px 0 8px 0;
+	font-size: 0.9em;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.note-scanner-view .input-section {
+	margin-bottom: 0px;
+}
+
+.note-scanner-view textarea {
+	width: 100%;
+	min-height: 80px;
+	padding: 8px;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	resize: vertical;
+	font-size: 0.9em;
+	line-height: 1.5;
+	font-family: var(--font-text);
+	margin-bottom: 8px;
+}
+
+.note-scanner-view textarea:focus {
+	outline: none;
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.note-scanner-view .checkbox-container {
+	margin-bottom: 12px;
+	display: flex;
+	align-items: center;
+	padding: 8px;
+	border-radius: 4px;
+	border: 1px solid transparent;
+	background: transparent;
+	transition: all 0.3s ease;
+	width: 100%;
+}
+
+.note-scanner-view .checkbox-container input[type="checkbox"] {
+	appearance: none;
+	-webkit-appearance: none;
+	/* width: 18px; */
+	height: 18px;
+	border: 2px solid var(--text-muted);
+	border-radius: 4px;
+	cursor: pointer;
+	background-color: var(--background-primary);
+	transition: all 0.2s ease;
+	margin-right: 8px;
+	flex-shrink: 0;
+	position: relative;
+}
+
+.note-scanner-view .checkbox-container input[type="checkbox"]:hover {
+	border-color: var(--interactive-accent);
+}
+
+.note-scanner-view .checkbox-container input[type="checkbox"]:checked {
+	background-color: transparent;
+	border: unset;
+	/* width: 20px; */
+	height: 20px;
+	opacity: 1;
+	box-shadow: none;
+}
+
+.note-scanner-view .checkbox-container input[type="checkbox"]:checked::after {
+	content: '✓';
+	position: absolute;
+	top: 54%;
+	left: 20%;
+	transform: translate(-50%, -50%);
+	color: green;
+	font-size: 16px;
+	font-weight: bold;
+	line-height: 1;
+	z-index: 9999;
+}
+
+.note-scanner-view .checkbox-container label {
+	margin: 0;
+	cursor: pointer;
+	user-select: none;
+	font-size: 0.9em;
+}
+
+.note-scanner-view .button-container {
+	margin-bottom: 16px;
+}
+
+.note-scanner-view button {
+	width: 100%;
+	padding: 10px 16px;
+	font-size: 0.95em;
+	font-weight: 500;
+	border-radius: 4px;
+	transition: all 0.2s ease;
+}
+
+.note-scanner-view button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.note-scanner-view .output-area {
+	background-color: var(--background-secondary);
+	color: var(--text-normal);
+	flex: 1;
+	overflow-y: auto;
+	min-height: 0;
+	border: 1px solid var(--background-modifier-border);
+	padding: 12px;
+	border-radius: 4px;
+	white-space: pre-wrap;
+	font-family: var(--font-monospace);
+	font-size: 0.85em;
+	line-height: 1.6;
+}
+
+.note-scanner-view .output-area a.internal-link {
+	color: var(--link-color);
+	text-decoration: none;
+	cursor: pointer;
+	border-bottom: 1px solid var(--link-color);
+	transition: all 0.2s ease;
+}
+
+.note-scanner-view .output-area a.internal-link:hover {
+	color: var(--link-color-hover);
+	border-bottom-color: var(--link-color-hover);
+	background-color: var(--background-modifier-hover);
+}
+
+.note-scanner-view .output-area a.external-link {
+	color: var(--link-external-color);
+	text-decoration: none;
+	cursor: pointer;
+}
