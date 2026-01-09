@@ -201,7 +201,7 @@ export default class ClaudeCodePlugin extends Plugin {
 			}
 		}
 
-		const results: Array<{file: string, filePath: string, line: string, lineNumber: number}> = [];
+		const results: Array<{file: string, filePath: string, line: string, lineNumber: number, mtime: number}> = [];
 		const searchTerms = query.toLowerCase().split(' ').filter(term => term.length > 0);
 
 		for (const file of files) {
@@ -228,7 +228,8 @@ export default class ClaudeCodePlugin extends Plugin {
 					file: file.basename,
 					filePath: file.path,
 					line: `File name match: ${file.path}`,
-					lineNumber: 0
+					lineNumber: 0,
+					mtime: file.stat.mtime
 				});
 			}
 
@@ -245,17 +246,25 @@ export default class ClaudeCodePlugin extends Plugin {
 						file: file.basename,
 						filePath: file.path,
 						line: line.trim(),
-						lineNumber: index + 1
+						lineNumber: index + 1,
+						mtime: file.stat.mtime
 					});
 				}
 			});
 		}
 
-		// Sort results by folder priority
+		// Sort results by folder priority, then by updated date (desc)
 		results.sort((a, b) => {
 			const aPriority = this.getFolderPriority(a.filePath);
 			const bPriority = this.getFolderPriority(b.filePath);
-			return aPriority - bPriority;
+
+			// First sort by priority
+			if (aPriority !== bPriority) {
+				return aPriority - bPriority;
+			}
+
+			// Then sort by updated date (descending - newest first)
+			return b.mtime - a.mtime;
 		});
 
 		// Format results

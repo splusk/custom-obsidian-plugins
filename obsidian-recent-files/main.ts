@@ -1,13 +1,19 @@
-import { App, Modal, Plugin, PluginSettingTab, Setting, TextComponent, WorkspaceLeaf, View } from 'obsidian';
+import { App, Modal, Notice, Plugin, PluginSettingTab, Setting, TextComponent, WorkspaceLeaf, View } from 'obsidian';
 
 interface RecentFilesSettings {
 	historyLength: number;
 	files: string[];
+	vaultName: string;
+	pinnedFiles: string[];
+	showDailyNote: boolean;
 }
 
 const DEFAULT_SETTINGS: RecentFilesSettings = {
 	historyLength: 15,
 	files: [],
+	vaultName: '',
+	pinnedFiles: [],
+	showDailyNote: false,
 }
 
 export default class RecentFilesPlugin extends Plugin {
@@ -54,9 +60,11 @@ class RecentFilesModal extends Modal {
 	allRecentTabs: WorkspaceLeaf[] = [];
 	saveFiles: (files: string[]) => Promise<void>;
 	searchText = '';
+	settings: RecentFilesSettings;
 
 	constructor(app: App, settings: RecentFilesSettings, saveData: (files: string[]) => Promise<void>) {
 		super(app);
+		this.settings = settings;
 		this.historyLength = settings.historyLength
 		this.saveFiles = saveData;
 
@@ -133,53 +141,59 @@ class RecentFilesModal extends Modal {
 			return aIndex - bIndex;
 		});
 
-		const dailyNoteIndex = openTabs.findIndex((tab) => (tab.view as any).title === 'Daily ToDo List' || (tab.view as any).file?.basename === 'Daily ToDo List');
-		if (dailyNoteIndex < 0) {
-			const tmpView = {
-				title: 'Daily ToDo List',
-				custom: 'daily-notes'
-			} as unknown as View;
-			// @ts-ignore
-			openTabs.unshift({ view: tmpView });
-		}
-		const dashboardIndex = openTabs.findIndex((tab) => (tab.view as any).title === 'Dashboard' || (tab.view as any).file?.basename === 'Dashboard');
-		if (dashboardIndex < 0) {
-			const tmpView = {
-				title: 'Dashboard',
-				custom: 'dashboard',
-			} as unknown as View;
-			// @ts-ignore
-			openTabs.unshift({ view: tmpView });
-		}
-		const updatedTabs = openTabs.filter(tab => this._getTabTitle(tab) !== this._getTabTitle(selectedLeaf));
-		const sortedTabs = this._sortOpenTabs(updatedTabs);
-		const tabMap = new Map<string, WorkspaceLeaf>();
-		for (const item of sortedTabs) {
-			const key = this._getTabTitle(item);
-			tabMap.set(key, item);
-		}
-		const tabsToReturn = [...tabMap.values()];
-		return tabsToReturn;
-	}
+		// Build pinned files list from settings
+		const pinnedFiles: Array<{ title: string; custom: string }> = [];
 
-	_sortOpenTabs = (tabs: WorkspaceLeaf[]) => {
-		const first = tabs[0];
-		const rest = tabs.slice(1);
+		// Add daily note if enabled
+		if (this.settings.showDailyNote) {
+			pinnedFiles.push({ title: 'Todays Daily Note', custom: 'daily-notes' });
+		}
 
-		// const priority = { 'Daily ToDo List': 1, 'Dashboard': 2};
-		const priority: Record<string, number> = {
-			'Daily ToDo List': 1,
-			'Dashboard': 2,
-		};
+		// Add user-configured pinned files
+		for (const fileName of this.settings.pinnedFiles) {
+			if (fileName.trim()) {
+				// Extract basename for display (remove extension and path)
+				const displayName = fileName.trim()
+					.replace(/\.[^/.]+$/, '') // Remove extension
+					.split('/').pop() || fileName.trim(); // Get last part of path
 
-		const sorted = rest.sort((a, b) => {
-			const aPriority = priority[this._getTabTitle(a)] ?? Infinity;
-			const bPriority = priority[this._getTabTitle(b)] ?? Infinity;
-			return aPriority - bPriority;
+				pinnedFiles.push({
+					title: fileName.trim(), // Store full path/name for lookup
+					custom: displayName.replace(/\s+/g, '-').toLowerCase()
+				});
+			}
+		}
+
+		// Remove pinned files from openTabs if they exist (to avoid duplicates)
+		const pinnedTitles = pinnedFiles.map(p => p.title);
+		const filteredTabs = openTabs.filter(tab => {
+			const title = this._getTabTitle(tab);
+			return !pinnedTitles.includes(title);
 		});
 
-		return [first, ...sorted];
-	};
+		// Limit to 10 most recent (non-pinned) files
+		const limitedTabs = filteredTabs.slice(0, 10);
+
+		// Add pinned files at the beginning
+		const pinnedTabs: WorkspaceLeaf[] = [];
+		for (const pinned of pinnedFiles) {
+			const tmpView = {
+				title: pinned.title,
+				custom: pinned.custom
+			} as unknown as View;
+			// @ts-ignore
+			pinnedTabs.push({ view: tmpView });
+		}
+
+		// Combine pinned files with recent files
+		const combinedTabs = [...pinnedTabs, ...limitedTabs];
+
+		// Remove currently selected leaf
+		const updatedTabs = combinedTabs.filter(tab => this._getTabTitle(tab) !== this._getTabTitle(selectedLeaf));
+
+		return updatedTabs;
+	}
+
 
 	_draw(filesToShow: string[], tabs: WorkspaceLeaf[]): void {
 		const { contentEl } = this;
@@ -241,7 +255,10 @@ class RecentFilesModal extends Modal {
 
 	_getDisplayName(currentFile: string | WorkspaceLeaf): string {
 		const fileName = this._getTabTitle(currentFile);
-		return (fileName as string).replace(/\.[^/.]+$/, '');
+		// Remove extension and get just the basename for display
+		return (fileName as string)
+			.replace(/\.[^/.]+$/, '') // Remove extension
+			.split('/').pop() || fileName as string; // Get last part of path
 	}
 
 
@@ -293,18 +310,44 @@ class RecentFilesModal extends Modal {
 			this.close();
 		} else {
 			const currentFile = this._getView(item)?.title || item;
-			const targetFile = this.app.vault.getFiles().find((f) => {
-				return f.basename === currentFile;
-			});
+
+			// Handle special case for Todays Daily Note
+			if (currentFile === 'Todays Daily Note') {
+				if (!this.settings.vaultName || this.settings.vaultName.trim() === '') {
+					new Notice('Vault name is not set. Please configure it in plugin settings.');
+					this.close();
+					return;
+				}
+				window.open(`obsidian://adv-uri?vault=${encodeURIComponent(this.settings.vaultName)}&daily=true`);
+				this.close();
+				return;
+			}
+
+			// Try to find file by full path first, then by basename
+			let targetFile = this.app.vault.getAbstractFileByPath(currentFile);
+
+			if (!targetFile) {
+				// If full path doesn't work, try with .md extension
+				targetFile = this.app.vault.getAbstractFileByPath(currentFile + '.md');
+			}
+
+			if (!targetFile) {
+				// Fall back to searching by basename
+				const foundFile = this.app.vault.getFiles().find((f) => {
+					return f.basename === currentFile;
+				});
+				targetFile = foundFile || null;
+			}
 
 			if (targetFile) {
 				let leaf = this.app.workspace.getMostRecentLeaf();
+				const targetPath = targetFile.path;
 				await app.workspace.iterateAllLeaves((openLeaf: WorkspaceLeaf) => {
 					const view = this._getView(openLeaf);
 					if (
 					view.modes &&
 					view.file &&
-					view.file.path === targetFile.path
+					view.file.path === targetPath
 					) {
 					leaf = openLeaf;
 					}
@@ -338,6 +381,38 @@ class SettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		containerEl.createEl('h2', {text: 'Settings for recent tabs list'});
+
+		new Setting(containerEl)
+			.setName('Vault Name')
+			.setDesc('Name of your Obsidian vault (required for daily note feature)')
+			.addText(text => text
+				.setPlaceholder('Enter vault name')
+				.setValue(this.plugin.settings.vaultName)
+				.onChange(async (value) => {
+					this.plugin.settings.vaultName = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Show Daily Note')
+			.setDesc('Show "Todays Daily Note" at the top of the recent files list')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showDailyNote)
+				.onChange(async (value) => {
+					this.plugin.settings.showDailyNote = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Pinned Files')
+			.setDesc('File names to always show at the top (one per line). You can use either basename (e.g., "TaskList") or full path (e.g., "Notes/TaskList.md").')
+			.addTextArea(text => text
+				.setPlaceholder('Dashboard\nNotes/TaskList\nNotes/NoteList.md')
+				.setValue(this.plugin.settings.pinnedFiles.join('\n'))
+				.onChange(async (value) => {
+					this.plugin.settings.pinnedFiles = value.split('\n').filter(line => line.trim());
+					await this.plugin.saveSettings();
+				}));
 
 		new Setting(containerEl)
 			.setName('History Size')
