@@ -28,13 +28,15 @@ interface ClaudeCodePluginSettings {
 	claudeCodePath: string;
 	useAI: boolean;
 	excludedFolders: string[];
+	prioritizedFolders: string[];
 }
 
 const DEFAULT_SETTINGS: ClaudeCodePluginSettings = {
 	vaultPath: '~/Documents/Obsidian/Kry',
 	claudeCodePath: '~/.nvm/versions/node/v20.15.1/bin/claude',
 	useAI: false,
-	excludedFolders: ['archive', '.obsidian', 'Bookmarks', 'attachments', 'Templates', 'Examples', 'src', '1-1']
+	excludedFolders: ['archive', '.obsidian', 'Bookmarks', 'attachments', 'Templates', 'Examples', 'src', '1-1'],
+	prioritizedFolders: ['/', 'Notes']
 }
 
 export default class ClaudeCodePlugin extends Plugin {
@@ -167,6 +169,26 @@ export default class ClaudeCodePlugin extends Plugin {
 		return text;
 	}
 
+	// Get folder priority index for sorting
+	getFolderPriority(filePath: string): number {
+		// Extract the folder path from the file path
+		const folderPath = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : '';
+
+		// Find the index in prioritizedFolders array
+		const priorityIndex = this.settings.prioritizedFolders.findIndex(folder => {
+			// Empty string, '/', 'root', or 'Root' represents root folder
+			const folderLower = folder.toLowerCase();
+			if (folder === '' || folder === '/' || folderLower === 'root') {
+				return folderPath === '';
+			}
+			// Check if file is directly in the prioritized folder or a subfolder
+			return filePath.startsWith(folder + '/') || folderPath === folder;
+		});
+
+		// Return the index if found, otherwise return a large number for lowest priority
+		return priorityIndex === -1 ? 9999 : priorityIndex;
+	}
+
 	// Perform fuzzy search on vault contents
 	async fuzzySearch(query: string, currentFileOnly: boolean = false, currentFilePath?: string): Promise<string> {
 		let files = this.app.vault.getMarkdownFiles();
@@ -205,7 +227,7 @@ export default class ClaudeCodePlugin extends Plugin {
 				results.push({
 					file: file.basename,
 					filePath: file.path,
-					line: `📄 File name match: ${file.path}`,
+					line: `File name match: ${file.path}`,
 					lineNumber: 0
 				});
 			}
@@ -229,6 +251,13 @@ export default class ClaudeCodePlugin extends Plugin {
 			});
 		}
 
+		// Sort results by folder priority
+		results.sort((a, b) => {
+			const aPriority = this.getFolderPriority(a.filePath);
+			const bPriority = this.getFolderPriority(b.filePath);
+			return aPriority - bPriority;
+		});
+
 		// Format results
 		if (results.length === 0) {
 			return 'No results found.';
@@ -249,12 +278,21 @@ export default class ClaudeCodePlugin extends Plugin {
 			// Convert markdown links in the line content to HTML
 			displayLine = this.convertWikiLinksToHTML(displayLine);
 
+			// Extract folder name from file path
+			const folderName = result.filePath.includes('/')
+				? result.filePath.substring(0, result.filePath.lastIndexOf('/'))
+				: '';
+
 			// Include file path in the link data attribute so we can find it later
-			// For file name matches (lineNumber === 0), don't show line number
+			// For file name matches (lineNumber === 0), add 📄 icon to the title
 			if (result.lineNumber === 0) {
-				response += `<a href="#" class="internal-link" data-file="${result.file}" data-filepath="${result.filePath}">${result.file}</a>\n${displayLine}\n\n`;
+				response += `<a href="#" class="internal-link" data-file="${result.file}" data-filepath="${result.filePath}">📄 ${result.file}</a>\n${displayLine}\n\n`;
 			} else {
-				response += `<a href="#" class="internal-link" data-file="${result.file}" data-filepath="${result.filePath}" data-line="${result.lineNumber}">${result.file}</a> (line ${result.lineNumber})\n${displayLine}\n\n`;
+				// Display folder name with line number if folder exists
+				const locationText = folderName
+					? `(${folderName}, line ${result.lineNumber})`
+					: `(line ${result.lineNumber})`;
+				response += `<a href="#" class="internal-link" data-file="${result.file}" data-filepath="${result.filePath}" data-line="${result.lineNumber}">${result.file}</a> ${locationText}\n${displayLine}\n\n`;
 			}
 		});
 
@@ -811,6 +849,19 @@ class ClaudeCodeSettingTab extends PluginSettingTab {
 						.split(',')
 						.map(folder => folder.trim())
 						.filter(folder => folder.length > 0);
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Prioritized Folders')
+			.setDesc('Folders to prioritize in fuzzy search results, in order of priority (comma-separated). Use "/", "root", or "Root" for root folder. E.g., "/, Notes, Tech" or "root, Notes, Tech"')
+			.addTextArea(text => text
+				.setPlaceholder('/, Notes, Tech')
+				.setValue(this.plugin.settings.prioritizedFolders.join(', '))
+				.onChange(async (value) => {
+					this.plugin.settings.prioritizedFolders = value
+						.split(',')
+						.map(folder => folder.trim());
 					await this.plugin.saveSettings();
 				}));
 	}

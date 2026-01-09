@@ -140,6 +140,10 @@
 	font-family: var(--font-monospace);
 	font-size: 0.85em;
 	line-height: 1.6;
+	user-select: text;
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	-ms-user-select: text;
 }
 
 .note-scanner-view .output-area a.internal-link {
