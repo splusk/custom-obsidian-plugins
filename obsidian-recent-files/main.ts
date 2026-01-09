@@ -1,7 +1,6 @@
 import { App, Modal, Notice, Plugin, PluginSettingTab, Setting, TextComponent, WorkspaceLeaf, View } from 'obsidian';
 
 interface RecentFilesSettings {
-	historyLength: number;
 	files: string[];
 	vaultName: string;
 	pinnedFiles: string[];
@@ -9,7 +8,6 @@ interface RecentFilesSettings {
 }
 
 const DEFAULT_SETTINGS: RecentFilesSettings = {
-	historyLength: 15,
 	files: [],
 	vaultName: '',
 	pinnedFiles: [],
@@ -54,7 +52,6 @@ export default class RecentFilesPlugin extends Plugin {
 }
 
 class RecentFilesModal extends Modal {
-	historyLength = DEFAULT_SETTINGS.historyLength;
 	selectedIndex = 0;
 	allRecentFiles: string[] = [];
 	allRecentTabs: WorkspaceLeaf[] = [];
@@ -65,7 +62,6 @@ class RecentFilesModal extends Modal {
 	constructor(app: App, settings: RecentFilesSettings, saveData: (files: string[]) => Promise<void>) {
 		super(app);
 		this.settings = settings;
-		this.historyLength = settings.historyLength
 		this.saveFiles = saveData;
 
 		const files = this.app.workspace.getLastOpenFiles().map((filePath) => {
@@ -84,7 +80,7 @@ class RecentFilesModal extends Modal {
 				return null;
 			}).filter(Boolean) as string[];
 			const difference = realFiles.filter((x: string) => !files.includes(x));
-			this.allRecentFiles = files.concat(difference).slice(0, this.historyLength);
+			this.allRecentFiles = files.concat(difference);
 		} else {
 			this.allRecentFiles = files;
 		}
@@ -164,15 +160,28 @@ class RecentFilesModal extends Modal {
 			}
 		}
 
-		// Remove pinned files from openTabs if they exist (to avoid duplicates)
-		const pinnedTitles = pinnedFiles.map(p => p.title);
+		// Get today's date in daily note format (YYYY-MM-DD)
+		const today = new Date();
+		const dailyNoteFilename = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+		// Create a set of pinned basenames for efficient matching
+		// Extract basename from each pinned file (handles both "TaskList" and "Notes/TaskList.md")
+		const pinnedBasenames = new Set(pinnedFiles.map(p => {
+			const title = p.title.replace(/\.[^/.]+$/, '').split('/').pop() || p.title;
+			return title.toLowerCase();
+		}));
+
+		// Remove pinned files and today's daily note from openTabs (to avoid duplicates)
 		const filteredTabs = openTabs.filter(tab => {
 			const title = this._getTabTitle(tab);
-			return !pinnedTitles.includes(title);
-		});
+			const basename = title.replace(/\.[^/.]+$/, '').split('/').pop() || title;
 
-		// Limit to 10 most recent (non-pinned) files
-		const limitedTabs = filteredTabs.slice(0, 10);
+			// Exclude if matches any pinned file basename
+			if (pinnedBasenames.has(basename.toLowerCase())) return false;
+			// Exclude today's daily note file if daily note option is enabled
+			if (this.settings.showDailyNote && title.includes(dailyNoteFilename)) return false;
+			return true;
+		});
 
 		// Add pinned files at the beginning
 		const pinnedTabs: WorkspaceLeaf[] = [];
@@ -182,16 +191,19 @@ class RecentFilesModal extends Modal {
 				custom: pinned.custom
 			} as unknown as View;
 			// @ts-ignore
-			pinnedTabs.push({ view: tmpView });
+			pinnedTabs.push({ view: tmpView, isPinned: true });
 		}
 
-		// Combine pinned files with recent files
-		const combinedTabs = [...pinnedTabs, ...limitedTabs];
+		// Get the second most recent tab (last viewed before current) for easy switching back
+		const previousTab = filteredTabs.length > 0 ? [filteredTabs[0]] : [];
 
-		// Remove currently selected leaf
-		const updatedTabs = combinedTabs.filter(tab => this._getTabTitle(tab) !== this._getTabTitle(selectedLeaf));
+		// Get remaining tabs (already limited by Obsidian API to max 10)
+		const restTabs = filteredTabs.slice(1);
 
-		return updatedTabs;
+		// Combine: previous tab first, then pinned files, then the rest
+		const combinedTabs = [...previousTab, ...pinnedTabs, ...restTabs];
+
+		return combinedTabs;
 	}
 
 
@@ -280,7 +292,14 @@ class RecentFilesModal extends Modal {
 		if (text.length >= 1) {
 			this.selectedIndex = 0;
 			if (tabs) {
-				filterTabs = tabs.filter(f => this._getTabTitle(f).toLocaleUpperCase().indexOf(text.toLocaleUpperCase()) > -1);
+				// Filter tabs while maintaining order: previous tab first, then pinned, then rest
+				const searchUpper = text.toLocaleUpperCase();
+				const previousTab = tabs.length > 0 && !(tabs[0] as any).isPinned
+					? tabs.filter((f: any, index: number) => index === 0 && this._getTabTitle(f).toLocaleUpperCase().indexOf(searchUpper) > -1)
+					: [];
+				const pinnedTabs = tabs.filter((f: any) => f.isPinned && this._getTabTitle(f).toLocaleUpperCase().indexOf(searchUpper) > -1);
+				const regularTabs = tabs.filter((f: any, index: number) => !f.isPinned && index !== 0 && this._getTabTitle(f).toLocaleUpperCase().indexOf(searchUpper) > -1);
+				filterTabs = [...previousTab, ...pinnedTabs, ...regularTabs];
 			} else{
 				filteredFiles = filesToShow.filter(f => f.toLocaleUpperCase().indexOf(text.toLocaleUpperCase()) > -1);
 			}
@@ -342,7 +361,9 @@ class RecentFilesModal extends Modal {
 			if (targetFile) {
 				let leaf = this.app.workspace.getMostRecentLeaf();
 				const targetPath = targetFile.path;
-				await app.workspace.iterateAllLeaves((openLeaf: WorkspaceLeaf) => {
+
+				// Check if file is already open in a leaf
+				app.workspace.iterateAllLeaves((openLeaf: WorkspaceLeaf) => {
 					const view = this._getView(openLeaf);
 					if (
 					view.modes &&
@@ -352,11 +373,13 @@ class RecentFilesModal extends Modal {
 					leaf = openLeaf;
 					}
 				});
+
 				if (!leaf) {
 					leaf = this.app.workspace.getLeaf('tab');
 				}
+
 				//@ts-ignore
-				leaf.openFile(targetFile, { active: true });
+				await leaf.openFile(targetFile, { active: true });
 				this.close();
 			}
 		}
@@ -411,17 +434,6 @@ class SettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.pinnedFiles.join('\n'))
 				.onChange(async (value) => {
 					this.plugin.settings.pinnedFiles = value.split('\n').filter(line => line.trim());
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('History Size')
-			.setDesc('Number of tabs to show in the list')
-			.addText(text => text
-				.setPlaceholder(DEFAULT_SETTINGS.historyLength.toString())
-				.setValue(this.plugin.settings.historyLength.toString())
-				.onChange(async (value) => {
-					this.plugin.settings.historyLength = Number(value);
 					await this.plugin.saveSettings();
 				}));
 	}
