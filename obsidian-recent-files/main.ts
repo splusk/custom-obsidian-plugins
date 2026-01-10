@@ -48,7 +48,7 @@ export default class RecentFilesPlugin extends Plugin {
 		});
 		this.addRibbonIcon(
 			'file-text',
-			`Open recent tabs modal`,
+			`Open recent tabs`,
 			async () => {
 				new RecentFilesModal(this.app, this.settings, this.saveFiles.bind(this)).open();
 			}
