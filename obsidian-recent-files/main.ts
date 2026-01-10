@@ -16,6 +16,22 @@ const DEFAULT_SETTINGS: RecentFilesSettings = {
 	showPinnedNoteInRibbon: false,
 }
 
+const getTargetFile = (app: App, fileName: string): TFile | null => {
+	// Try to find file by full path first, then by basename
+	let targetFile = fileName.endsWith('.md') ? 
+		app.vault.getAbstractFileByPath(fileName) 
+		: app.vault.getAbstractFileByPath(fileName + '.md');
+
+	if (!targetFile) {
+		// Fall back to searching by basename
+		const foundFile = app.vault.getFiles().find((f) => {
+			return f.basename === fileName;
+		});
+		targetFile = foundFile || null;
+	}
+	return targetFile instanceof TFile ? targetFile : null;
+};
+
 export default class RecentFilesPlugin extends Plugin {
 	settings: RecentFilesSettings
 	ribbonIcons: HTMLElement[] = [];
@@ -67,8 +83,7 @@ export default class RecentFilesPlugin extends Plugin {
   				'file-text',
      			`Open Pinned Note: ${displayName}`,
 				async () => {
-					const fullName = fileName.endsWith('.md') ? fileName : `${fileName}.md`;
-        			const file = this.app.vault.getAbstractFileByPath(fullName);
+        			const file = getTargetFile(this.app, fileName);
         			if (file instanceof TFile) {
           				await this.app.workspace.getLeaf(true).openFile(file);
         			} else {
@@ -84,7 +99,7 @@ export default class RecentFilesPlugin extends Plugin {
   	async removePinnedNotesFromRibbon() {
   		this.ribbonIcons.forEach(icon => icon.remove());
   		this.ribbonIcons = [];
-}
+	}
 }
 
 class RecentFilesModal extends Modal {
@@ -309,7 +324,6 @@ class RecentFilesModal extends Modal {
 			.split('/').pop() || fileName as string; // Get last part of path
 	}
 
-
 	_createSearchBox(childrenEl: HTMLElement, filesToShow: string[], tabs: WorkspaceLeaf[]): TextComponent {
 		const input = new TextComponent(childrenEl)
 			.setPlaceholder("Search")
@@ -378,21 +392,7 @@ class RecentFilesModal extends Modal {
 				return;
 			}
 
-			// Try to find file by full path first, then by basename
-			let targetFile = this.app.vault.getAbstractFileByPath(currentFile);
-
-			if (!targetFile) {
-				// If full path doesn't work, try with .md extension
-				targetFile = this.app.vault.getAbstractFileByPath(currentFile + '.md');
-			}
-
-			if (!targetFile) {
-				// Fall back to searching by basename
-				const foundFile = this.app.vault.getFiles().find((f) => {
-					return f.basename === currentFile;
-				});
-				targetFile = foundFile || null;
-			}
+			const targetFile = getTargetFile(this.app, currentFile);
 
 			if (targetFile) {
 				let leaf = this.app.workspace.getMostRecentLeaf();
