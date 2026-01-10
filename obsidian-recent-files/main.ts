@@ -1,10 +1,11 @@
-import { App, Modal, Notice, Plugin, PluginSettingTab, Setting, TextComponent, WorkspaceLeaf, View } from 'obsidian';
+import { App, Modal, Notice, Plugin, PluginSettingTab, Setting, TextComponent, WorkspaceLeaf, View, TFile } from 'obsidian';
 
 interface RecentFilesSettings {
 	files: string[];
 	vaultName: string;
 	pinnedFiles: string[];
 	showDailyNote: boolean;
+	showPinnedNoteInRibbon: boolean;
 }
 
 const DEFAULT_SETTINGS: RecentFilesSettings = {
@@ -12,10 +13,12 @@ const DEFAULT_SETTINGS: RecentFilesSettings = {
 	vaultName: '',
 	pinnedFiles: [],
 	showDailyNote: false,
+	showPinnedNoteInRibbon: false,
 }
 
 export default class RecentFilesPlugin extends Plugin {
 	settings: RecentFilesSettings
+	ribbonIcons: HTMLElement[] = [];
 
 	async onload() {
 		await this.loadSettings();
@@ -27,7 +30,10 @@ export default class RecentFilesPlugin extends Plugin {
 				new RecentFilesModal(this.app, this.settings, this.saveFiles.bind(this)).open();
 			}
 		});
-
+		if (this.settings.showPinnedNoteInRibbon) {
+			this.addPinnedNotesToRibbon();
+		}
+		
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new SettingTab(this.app, this));
 	}
@@ -49,6 +55,35 @@ export default class RecentFilesPlugin extends Plugin {
 			files: files
 		});
 	}
+
+	async addPinnedNotesToRibbon() {
+  		if (this.ribbonIcons.length > 0) return;
+
+  		this.settings.pinnedFiles.forEach((fileName) => {
+    		const displayName =
+      			fileName.replace(/\.[^/.]+$/, '').split('/').pop() || fileName;
+
+		    const icon = this.addRibbonIcon(
+  				'file-text',
+     			`Open Pinned Note: ${displayName}`,
+				async () => {
+        			const file = this.app.vault.getAbstractFileByPath(fileName);
+        			if (file instanceof TFile) {
+          				await this.app.workspace.getLeaf(true).openFile(file);
+        			} else {
+          				new Notice(`${fileName} not found in vault.`);
+        			}
+      			}
+    		);
+
+    		this.ribbonIcons.push(icon);
+  		});
+	}
+
+  	async removePinnedNotesFromRibbon() {
+  		this.ribbonIcons.forEach(icon => icon.remove());
+  		this.ribbonIcons = [];
+}
 }
 
 class RecentFilesModal extends Modal {
@@ -435,6 +470,23 @@ class SettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.pinnedFiles = value.split('\n').filter(line => line.trim());
 					await this.plugin.saveSettings();
-				}));
+				})
+			);
+
+		new Setting(containerEl)
+			.setName('Show Pinned Note in Ribbon')
+			.setDesc('Show Pinned Note in the ribbon for quick access')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showPinnedNoteInRibbon)
+				.onChange(async (value) => {
+					this.plugin.settings.showPinnedNoteInRibbon = value;
+					await this.plugin.saveSettings();
+					if (value) {
+						this.plugin.addPinnedNotesToRibbon();
+					} else {
+						this.plugin.removePinnedNotesFromRibbon();
+					}
+				})
+			);
 	}
 }
