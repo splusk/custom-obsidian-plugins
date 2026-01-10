@@ -67,7 +67,8 @@ export default class RecentFilesPlugin extends Plugin {
   				'file-text',
      			`Open Pinned Note: ${displayName}`,
 				async () => {
-        			const file = this.app.vault.getAbstractFileByPath(fileName);
+					const fullName = fileName.endsWith('.md') ? fileName : `${fileName}.md`;
+        			const file = this.app.vault.getAbstractFileByPath(fullName);
         			if (file instanceof TFile) {
           				await this.app.workspace.getLeaf(true).openFile(file);
         			} else {
