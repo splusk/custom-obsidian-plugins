@@ -22,7 +22,11 @@ If your plugin does not need CSS, delete this file.
 }
 
 .recent-files-selected {
-  background: grey
+  background: grey;
+}
+
+.recent-files-selected > div > div {
+  color: wheat;
 }
 
 .recent-files-title:hover .recent-files-file-delete {
