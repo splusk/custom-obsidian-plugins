@@ -1,2 +1,2 @@
 # custom-obsidian-plugins
-Custom Obsidian Plugins
+A collection of custom Obsidian Plugins
