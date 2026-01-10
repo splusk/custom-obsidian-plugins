@@ -253,13 +253,18 @@ class RecentFilesModal extends Modal {
 		}
 
 		// Get the second most recent tab (last viewed before current) for easy switching back
-		const previousTab = filteredTabs.length > 0 ? [filteredTabs[0]] : [];
+		const previousTab = openTabs.length > 0 ? [openTabs[0]] : [];
+		// const previousTab = filteredTabs.length > 0 ? [filteredTabs[0]] : [];
 
 		// Get remaining tabs (already limited by Obsidian API to max 10)
 		const restTabs = filteredTabs.slice(1);
 
+		//@ts-ignore
+		// Exclude any tab that matches the previous tab to avoid duplicates
+		const tabsToShow = [...pinnedTabs, ...restTabs].filter(tab => tab.view.title !== previousTab[0]?.view.title);
+
 		// Combine: previous tab first, then pinned files, then the rest
-		const combinedTabs = [...previousTab, ...pinnedTabs, ...restTabs];
+		const combinedTabs = [...previousTab, ...tabsToShow];
 
 		return combinedTabs;
 	}
