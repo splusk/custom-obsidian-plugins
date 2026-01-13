@@ -80,32 +80,32 @@ export default class RecentFilesPlugin extends Plugin {
 	}
 
 	async addPinnedNotesToRibbon() {
-  		if (this.ribbonIcons.length > 0) return;
+		if (this.ribbonIcons.length > 0) return;
 
-  		this.settings.pinnedFiles.forEach((fileName) => {
-    		const displayName =
-      			fileName.replace(/\.[^/.]+$/, '').split('/').pop() || fileName;
+		this.settings.pinnedFiles.forEach((fileName) => {
+			const displayName =
+				fileName.replace(/\.[^/.]+$/, '').split('/').pop() || fileName;
 
-		    const icon = this.addRibbonIcon(
-  				'file-text',
-     			`Open Pinned Note: ${displayName}`,
+			const icon = this.addRibbonIcon(
+				'file-text',
+				`Open Pinned Note: ${displayName}`,
 				async () => {
-        			const file = getTargetFile(this.app, fileName);
-        			if (file instanceof TFile) {
-          				await this.app.workspace.getLeaf(true).openFile(file);
-        			} else {
-          				new Notice(`${fileName} not found in vault.`);
-        			}
-      			}
-    		);
+					const file = getTargetFile(this.app, fileName);
+					if (file instanceof TFile) {
+						await this.app.workspace.getLeaf(true).openFile(file);
+					} else {
+						new Notice(`${fileName} not found in vault.`);
+					}
+				}
+			);
 
-    		this.ribbonIcons.push(icon);
-  		});
+			this.ribbonIcons.push(icon);
+		});
 	}
 
-  	async removePinnedNotesFromRibbon() {
-  		this.ribbonIcons.forEach(icon => icon.remove());
-  		this.ribbonIcons = [];
+	async removePinnedNotesFromRibbon() {
+		this.ribbonIcons.forEach(icon => icon.remove());
+		this.ribbonIcons = [];
 	}
 }
 

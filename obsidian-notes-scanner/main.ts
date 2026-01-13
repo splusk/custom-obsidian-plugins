@@ -39,6 +39,23 @@ const DEFAULT_SETTINGS: ClaudeCodePluginSettings = {
 	prioritizedFolders: ['/', 'Notes']
 }
 
+let closeTimer: number | null = null;
+const startCloseTimer = (action?: () => void) => {
+  closeTimer = window.setTimeout(() => {
+    closeTimer = null;
+	if (action) {
+		action();
+	}
+  }, 10_000);
+};
+
+const cancelCloseTimer = () => {
+  if (closeTimer !== null) {
+    window.clearTimeout(closeTimer);
+    closeTimer = null;
+  }
+};
+
 export default class ClaudeCodePlugin extends Plugin {
 	settings: ClaudeCodePluginSettings;
 
@@ -425,9 +442,11 @@ class NoteScannerView extends ItemView {
 	submitBtn: HTMLButtonElement;
 	resetBtn: HTMLButtonElement;
 	scanCheckbox: HTMLInputElement;
+	collapseBtn: HTMLButtonElement;
 	currentFileOnlyCheckbox: HTMLInputElement;
 	inputSection: HTMLDivElement;
 	isInputCollapsed: boolean = false;
+	lastState: boolean | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: ClaudeCodePlugin) {
 		super(leaf);
@@ -447,6 +466,26 @@ class NoteScannerView extends ItemView {
 	}
 
 	async onOpen() {
+		this.registerEvent(
+			this.app.workspace.on("active-leaf-change", () => {
+				const isCollapsed = this.app.workspace.rightSplit.collapsed;
+
+				if (this.lastState === null) {
+					this.lastState = isCollapsed;
+					return;
+				}
+
+				if (this.lastState !== isCollapsed) {
+					if (isCollapsed) {
+						startCloseTimer(this.resetFields.bind(this));
+					} else {
+						cancelCloseTimer();
+					}
+					this.lastState = isCollapsed;
+				}
+			})
+		);
+
 		const container = this.containerEl.children[1];
 		container.empty();
 		container.addClass('note-scanner-view');
@@ -462,23 +501,23 @@ class NoteScannerView extends ItemView {
 
 		// Add collapse toggle button on mobile only
 		if (Platform.isMobile) {
-			const collapseBtn = titleContainer.createEl('button', {
+			this.collapseBtn = titleContainer.createEl('button', {
 				text: '▼',
 				cls: 'collapse-toggle-btn'
 			});
-			collapseBtn.style.fontSize = '20px';
-			collapseBtn.style.cursor = 'pointer';
-			collapseBtn.style.background = 'none';
-			collapseBtn.style.border = 'none';
-			collapseBtn.style.padding = 'unset';
-    		collapseBtn.style.width = 'unset';
-			collapseBtn.style.borderRadius = 'unset';
-			collapseBtn.style.padding = 'unset';
-			collapseBtn.style.margin = 'unset';
-			collapseBtn.style.boxShadow = 'unset';
+			this.collapseBtn.style.fontSize = '20px';
+			this.collapseBtn.style.cursor = 'pointer';
+			this.collapseBtn.style.background = 'none';
+			this.collapseBtn.style.border = 'none';
+			this.collapseBtn.style.padding = 'unset';
+    		this.collapseBtn.style.width = 'unset';
+			this.collapseBtn.style.borderRadius = 'unset';
+			this.collapseBtn.style.padding = 'unset';
+			this.collapseBtn.style.margin = 'unset';
+			this.collapseBtn.style.boxShadow = 'unset';
 
-			collapseBtn.addEventListener('click', () => {
-				this.toggleInputSection(collapseBtn);
+			this.collapseBtn.addEventListener('click', () => {
+				this.toggleInputSection();
 			});
 		}
 
@@ -629,7 +668,7 @@ class NoteScannerView extends ItemView {
 					new Notice('Searching current file...');
 				} else {
 					this.outputEl.setText('Searching vault...');
-					new Notice('Searching vault...');
+					// new Notice('Searching vault...');
 				}
 
 				response = await this.plugin.fuzzySearch(query, currentFileOnly, currentFilePath);
@@ -737,6 +776,7 @@ class NoteScannerView extends ItemView {
 		} finally {
 			this.submitBtn.disabled = false;
 			this.submitBtn.setText(this.getSearchButtonText());
+			this.toggleInputSection();
 		}
 	}
 
@@ -775,18 +815,20 @@ class NoteScannerView extends ItemView {
 		this.resetBtn.style.display = 'none';
 	}
 
-	toggleInputSection(collapseBtn: HTMLButtonElement) {
-		this.isInputCollapsed = !this.isInputCollapsed;
+	toggleInputSection() {
+		if (Platform.isMobile && this.collapseBtn) {
+			this.isInputCollapsed = !this.isInputCollapsed;
 
-		if (this.isInputCollapsed) {
-			// Collapse the input section
-			this.inputSection.style.display = 'none';
-			collapseBtn.setText('▶');
-		} else {
-			// Expand the input section
-			this.inputSection.style.display = 'block';
-			collapseBtn.setText('▼');
-		}
+			if (this.isInputCollapsed) {
+				// Collapse the input section
+				this.inputSection.style.display = 'none';
+				this.collapseBtn.setText('▶');
+			} else {
+				// Expand the input section
+				this.inputSection.style.display = 'block';
+				this.collapseBtn.setText('▼');
+			}
+		} 
 	}
 
 	async onClose() {
