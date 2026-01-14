@@ -12,7 +12,7 @@ if (Platform.isDesktop) {
 
 const VIEW_TYPE_NOTE_SCANNER = 'note-scanner-view';
 
-interface ClaudeCodePluginSettings {
+interface NodeScannerPluginSettings {
 	vaultPath: string;
 	claudeCodePath: string;
 	useAI: boolean;
@@ -21,7 +21,7 @@ interface ClaudeCodePluginSettings {
 	autoCloseDelay: number;
 }
 
-const DEFAULT_SETTINGS: ClaudeCodePluginSettings = {
+const DEFAULT_SETTINGS: NodeScannerPluginSettings = {
 	vaultPath: '~/Documents/Obsidian/Kry',
 	claudeCodePath: '~/.nvm/versions/node/v20.15.1/bin/claude',
 	useAI: false,
@@ -47,8 +47,8 @@ const cancelCloseTimer = () => {
   }
 };
 
-export default class ClaudeCodePlugin extends Plugin {
-	settings: ClaudeCodePluginSettings;
+export default class NoteScannerPlugin extends Plugin {
+	settings: NodeScannerPluginSettings;
 
 	async onload() {
 		await this.loadSettings();
@@ -448,7 +448,7 @@ export default class ClaudeCodePlugin extends Plugin {
 }
 
 class NoteScannerView extends ItemView {
-	plugin: ClaudeCodePlugin;
+	plugin: NoteScannerPlugin;
 	inputEl: HTMLTextAreaElement;
 	outputEl: HTMLDivElement;
 	submitBtn: HTMLButtonElement;
@@ -461,7 +461,7 @@ class NoteScannerView extends ItemView {
 	isInputCollapsed: boolean = false;
 	lastState: boolean | null = null;
 
-	constructor(leaf: WorkspaceLeaf, plugin: ClaudeCodePlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: NoteScannerPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}
@@ -895,9 +895,9 @@ class NoteScannerView extends ItemView {
 }
 
 class ClaudeCodeSettingTab extends PluginSettingTab {
-	plugin: ClaudeCodePlugin;
+	plugin: NoteScannerPlugin;
 
-	constructor(app: App, plugin: ClaudeCodePlugin) {
+	constructor(app: App, plugin: NoteScannerPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
