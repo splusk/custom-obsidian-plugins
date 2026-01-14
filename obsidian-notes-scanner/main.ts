@@ -1,24 +1,13 @@
-import { App, ItemView, Modal, Notice, Platform, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from 'obsidian';
+import { App, ItemView, Notice, Platform, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from 'obsidian';
 
 // Conditionally import Node.js modules only on desktop
 let spawn: any;
-let promisify: any;
 let path: any;
-let fs: any;
-let os: any;
-let writeFileAsync: any;
-let unlinkAsync: any;
 
 if (Platform.isDesktop) {
 	const childProcess = require('child_process');
-	const util = require('util');
 	spawn = childProcess.spawn;
-	promisify = util.promisify;
 	path = require('path');
-	fs = require('fs');
-	os = require('os');
-	writeFileAsync = promisify(fs.writeFile);
-	unlinkAsync = promisify(fs.unlink);
 }
 
 const VIEW_TYPE_NOTE_SCANNER = 'note-scanner-view';
@@ -29,6 +18,7 @@ interface ClaudeCodePluginSettings {
 	useAI: boolean;
 	excludedFolders: string[];
 	prioritizedFolders: string[];
+	autoCloseDelay: number;
 }
 
 const DEFAULT_SETTINGS: ClaudeCodePluginSettings = {
@@ -36,17 +26,18 @@ const DEFAULT_SETTINGS: ClaudeCodePluginSettings = {
 	claudeCodePath: '~/.nvm/versions/node/v20.15.1/bin/claude',
 	useAI: false,
 	excludedFolders: ['archive', '.obsidian', 'Bookmarks', 'attachments', 'Templates', 'Examples', 'src', '1-1'],
-	prioritizedFolders: ['/', 'Notes']
+	prioritizedFolders: ['/', 'Notes'],
+	autoCloseDelay: 10000
 }
 
 let closeTimer: number | null = null;
-const startCloseTimer = (action?: () => void) => {
+const startCloseTimer = (delay: number, action?: () => void) => {
   closeTimer = window.setTimeout(() => {
     closeTimer = null;
 	if (action) {
 		action();
 	}
-  }, 10_000);
+  }, delay);
 };
 
 const cancelCloseTimer = () => {
@@ -140,17 +131,17 @@ export default class ClaudeCodePlugin extends Plugin {
 		text = text.replace(/!\[icon]\([^)]*\)?/g, '').replace(/\s+/g, ' ').trim();
 
 		// First, handle wiki links with aliases: [[path/to/file|alias]]
-		text = text.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, (match, filePath, alias) => {
+		text = text.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, (_match, filePath, alias) => {
 			return `<a href="#" class="internal-link" data-file="${filePath.trim()}">${alias.trim()}</a>`;
 		});
 
 		// Then, handle simple wiki links: [[FileName]]
-		text = text.replace(/\[\[([^\]]+)\]\]/g, (match, fileName) => {
+		text = text.replace(/\[\[([^\]]+)\]\]/g, (_match, fileName) => {
 			return `<a href="#" class="internal-link" data-file="${fileName}">${fileName}</a>`;
 		});
 
 		// Handle markdown links with embedded images first: [text ![alt](path)](url)
-		text = text.replace(/\[([^[]*?)!\[[^\]]*\]\([^)]*\)\]\(([^)]+)\)/g, (match, linkText, url) => {
+		text = text.replace(/\[([^[]*?)!\[[^\]]*\]\([^)]*\)\]\(([^)]+)\)/g, (_match, linkText, url) => {
 			const cleanLinkText = linkText.trim();
 
 			// Check if it's an external URL
@@ -162,7 +153,7 @@ export default class ClaudeCodePlugin extends Plugin {
 		});
 
 		// Finally, handle regular markdown links: [text](url)
-		text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
+		text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, linkText, url) => {
 			// Check if it's an external URL
 			if (url.startsWith('http://') || url.startsWith('https://')) {
 				return `<a href="${url}" class="external-link" target="_blank" rel="noopener">${linkText}</a>`;
@@ -253,7 +244,28 @@ export default class ClaudeCodePlugin extends Plugin {
 			const content = await this.app.vault.read(file);
 			const lines = content.split('\n');
 
+			let inDataviewjsBlock = false;
+
 			lines.forEach((line, index) => {
+				const trimmedLine = line.trim();
+
+				// Check if we're starting a dataviewjs block
+				if (trimmedLine.startsWith('```dataviewjs')) {
+					inDataviewjsBlock = true;
+					return; // Skip this line
+				}
+
+				// Check if we're ending a code block
+				if (inDataviewjsBlock && trimmedLine.startsWith('```')) {
+					inDataviewjsBlock = false;
+					return; // Skip this line
+				}
+
+				// If we're inside a dataviewjs block, skip this line
+				if (inDataviewjsBlock) {
+					return;
+				}
+
 				const lineLower = line.toLowerCase();
 				// Check if all search terms are present in the line
 				const matchesAll = searchTerms.every(term => lineLower.includes(term));
@@ -352,9 +364,9 @@ export default class ClaudeCodePlugin extends Plugin {
 
 	// Send query to Claude Code
 	async queryClaudeCode(query: string, vaultContents: string): Promise<string> {
-		// Safety check - should never be called on mobile
-		if (Platform.isMobile) {
-			return Promise.reject(new Error('AI features are not available on mobile. Please use fuzzy search instead.'));
+		// Safety check - Node.js modules required for AI features
+		if (!spawn || !path) {
+			return Promise.reject(new Error('AI features require Node.js modules which are only available on desktop platforms.'));
 		}
 
 		return new Promise((resolve, reject) => {
@@ -444,6 +456,7 @@ class NoteScannerView extends ItemView {
 	scanCheckbox: HTMLInputElement;
 	collapseBtn: HTMLButtonElement;
 	currentFileOnlyCheckbox: HTMLInputElement;
+	aiSearchCheckbox: HTMLInputElement;
 	inputSection: HTMLDivElement;
 	isInputCollapsed: boolean = false;
 	lastState: boolean | null = null;
@@ -477,7 +490,7 @@ class NoteScannerView extends ItemView {
 
 				if (this.lastState !== isCollapsed) {
 					if (isCollapsed) {
-						startCloseTimer(this.resetFields.bind(this));
+						startCloseTimer(this.plugin.settings.autoCloseDelay, this.resetFields.bind(this));
 					} else {
 						cancelCloseTimer();
 					}
@@ -573,6 +586,33 @@ class NoteScannerView extends ItemView {
 			});
 		}
 
+		// AI Search checkbox (only show on desktop)
+		if (Platform.isDesktop) {
+			const aiCheckboxContainer = inputContainer.createDiv('checkbox-container');
+			this.aiSearchCheckbox = aiCheckboxContainer.createEl('input', {
+				type: 'checkbox',
+				attr: { id: 'ai-search-checkbox' }
+			});
+			const aiLabel = aiCheckboxContainer.createEl('label', {
+				text: 'AI Search',
+				attr: { for: 'ai-search-checkbox' }
+			});
+			aiLabel.style.cursor = 'pointer';
+			aiLabel.style.marginTop = '2px';
+
+			// Add event listener to change container background when checked
+			this.aiSearchCheckbox.addEventListener('change', (e) => {
+				const target = e.target as HTMLInputElement;
+				if (target.checked) {
+					aiCheckboxContainer.addClass('checkbox-checked');
+				} else {
+					aiCheckboxContainer.removeClass('checkbox-checked');
+				}
+				// Update button text based on checkbox state
+				this.submitBtn.setText(this.getSearchButtonText());
+			});
+		}
+
 		// Submit button
 		const buttonContainer = this.inputSection.createDiv('button-container');
 		this.submitBtn = buttonContainer.createEl('button', {
@@ -638,7 +678,10 @@ class NoteScannerView extends ItemView {
 		try {
 			let response: string;
 
-			if (this.plugin.settings.useAI) {
+			// Check if AI search should be used (either plugin setting or desktop checkbox)
+			const useAISearch = this.plugin.settings.useAI || (Platform.isDesktop && this.aiSearchCheckbox && this.aiSearchCheckbox.checked);
+
+			if (useAISearch) {
 				// Use AI mode
 				this.outputEl.setText('Scanning vault and querying...');
 				let vaultContents = '';
@@ -674,6 +717,10 @@ class NoteScannerView extends ItemView {
 				response = await this.plugin.fuzzySearch(query, currentFileOnly, currentFilePath);
 			}
 
+			if (response !== 'No results found.') {
+				this.toggleInputSection();
+			}
+
 			// Use innerHTML to render clickable links
 			this.outputEl.innerHTML = response.replace(/\n/g, '<br>');
 
@@ -694,7 +741,7 @@ class NoteScannerView extends ItemView {
 							file = this.app.vault.getAbstractFileByPath(filePath);
 						} else {
 							// Otherwise, search for the file (from AI results or wiki links)
-							const [fileName, heading] = fullLink.split('#');
+							const [fileName] = fullLink.split('#');
 							const files = this.app.vault.getMarkdownFiles();
 
 							// First try exact path match
@@ -776,11 +823,14 @@ class NoteScannerView extends ItemView {
 		} finally {
 			this.submitBtn.disabled = false;
 			this.submitBtn.setText(this.getSearchButtonText());
-			this.toggleInputSection();
 		}
 	}
 
 	getSearchButtonText(): string {
+		// If on desktop and AI search is checked, show AI Search
+		if (Platform.isDesktop && this.aiSearchCheckbox && this.aiSearchCheckbox.checked) {
+			return 'AI Search';
+		}
 		// If in AI mode or no current file checkbox exists, just say "Search"
 		if (this.plugin.settings.useAI || !this.currentFileOnlyCheckbox) {
 			return 'Search';
@@ -808,9 +858,17 @@ class NoteScannerView extends ItemView {
 			if (checkboxContainer) {
 				checkboxContainer.removeClass('checkbox-checked');
 			}
-			// Update button text after resetting checkbox
-			this.submitBtn.setText(this.getSearchButtonText());
 		}
+		if (this.aiSearchCheckbox) {
+			this.aiSearchCheckbox.checked = false;
+			// Remove the checked class
+			const aiCheckboxContainer = this.aiSearchCheckbox.parentElement;
+			if (aiCheckboxContainer) {
+				aiCheckboxContainer.removeClass('checkbox-checked');
+			}
+		}
+		// Update button text after resetting checkboxes
+		this.submitBtn.setText(this.getSearchButtonText());
 		// Hide reset button after clearing
 		this.resetBtn.style.display = 'none';
 	}
@@ -914,6 +972,20 @@ class ClaudeCodeSettingTab extends PluginSettingTab {
 						.split(',')
 						.map(folder => folder.trim());
 					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Auto-close Delay')
+			.setDesc('Time in seconds before auto-clearing the search fields when sidebar is collapsed (default: 10 seconds)')
+			.addText(text => text
+				.setPlaceholder('10')
+				.setValue(String(this.plugin.settings.autoCloseDelay / 1000))
+				.onChange(async (value) => {
+					const seconds = parseInt(value);
+					if (!isNaN(seconds) && seconds > 0) {
+						this.plugin.settings.autoCloseDelay = seconds * 1000;
+						await this.plugin.saveSettings();
+					}
 				}));
 	}
 }
