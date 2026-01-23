@@ -144,76 +144,87 @@ export default class NoteScannerPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
+  // Helper: Create an HTML link element
+  private createLink(
+    href: string,
+    text: string,
+    isExternal: boolean,
+    dataFile?: string,
+  ): string {
+    if (isExternal) {
+      return `<a href="${href}" class="external-link" target="_blank" rel="noopener">${text}</a>`;
+    }
+    return `<a href="#" class="internal-link" data-file="${dataFile || href}">${text}</a>`;
+  }
+
+  // Helper: Determine if URL is external
+  private isExternalUrl(url: string): boolean {
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
+
   // Convert [[FileName]] wiki links and markdown links to clickable HTML links
   convertWikiLinksToHTML(text: string): string {
-    // Check if text starts with ~~
-    const isFaded = text.trim().contains('~~') || text.trim().startsWith('- [x]');
+    const trimmedText = text.trim();
+    const isFaded = trimmedText.includes('~~') || trimmedText.startsWith('- [x]');
 
-    // Remove embedded icon images like ![icon](attachments/icons/...)
+    // Step 1: Clean up the text
     text = text
-      .replace(/!\[icon]\([^)]*\)?/g, '')
-      .replace(/\s+/g, ' ')
+      .replace(/!\[icon]\([^)]*\)?/g, '') // Remove icon images
+      .replace(/\s+/g, ' ') // Normalize whitespace
       .trim();
 
-    // If text starts with ~~, remove it
     if (isFaded) {
       text = text.replaceAll('~~', '').trim();
     }
 
-    // First, handle wiki links with aliases: [[path/to/file|alias]]
-    text = text.replace(
-      /\[\[([^\]|]+)\|([^\]]+)\]\]/g,
-      (_match, filePath, alias) => {
-        return `<a href="#" class="internal-link" data-file="${filePath.trim()}">${alias.trim()}</a>`;
-      },
+    // Step 2: Convert wiki links
+    // Wiki links with aliases: [[path/to/file|alias]]
+    text = text.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, (_, filePath, alias) =>
+      this.createLink('#', alias.trim(), false, filePath.trim()),
     );
 
-    // Then, handle simple wiki links: [[FileName]]
-    text = text.replace(/\[\[([^\]]+)\]\]/g, (_match, fileName) => {
-      return `<a href="#" class="internal-link" data-file="${fileName}">${fileName}</a>`;
-    });
+    // Simple wiki links: [[FileName]]
+    text = text.replace(/\[\[([^\]]+)\]\]/g, (_, fileName) =>
+      this.createLink('#', fileName, false, fileName),
+    );
 
-    // Handle markdown links with embedded images first: [text ![alt](path)](url)
+    // Step 3: Convert markdown links
+    // Markdown links with embedded images: [text ![alt](path)](url)
     text = text.replace(
       /\[([^[]*?)!\[[^\]]*\]\([^)]*\)\]\(([^)]+)\)/g,
-      (_match, linkText, url) => {
-        const cleanLinkText = linkText.trim();
-
-        // Check if it's an external URL
-        if (url.startsWith('http://') || url.startsWith('https://')) {
-          return `<a href="${url}" class="external-link" target="_blank" rel="noopener">${cleanLinkText}</a>`;
-        }
-        // Otherwise treat it as an internal link
-        return `<a href="#" class="internal-link" data-file="${url}">${cleanLinkText}</a>`;
+      (_, linkText, url) => {
+        const cleanText = linkText.trim();
+        return this.createLink(
+          url,
+          cleanText,
+          this.isExternalUrl(url),
+          url,
+        );
       },
     );
 
-    // Finally, handle regular markdown links: [text](url)
-    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, linkText, url) => {
-      // Check if it's an external URL
-      if (url.startsWith('http://') || url.startsWith('https://')) {
-        return `<a href="${url}" class="external-link" target="_blank" rel="noopener">${linkText}</a>`;
-      }
-      // Otherwise treat it as an internal link
-      return `<a href="#" class="internal-link" data-file="${url}">${linkText}</a>`;
-    });
+    // Regular markdown links: [text](url)
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, url) =>
+      this.createLink(url, linkText, this.isExternalUrl(url), url),
+    );
 
+    // Step 4: Clean up checkbox markers
     text = text.replace(/\[(x|X| )\]/g, '');
 
+    // Step 5: Fallback for plain URLs (only if no links were converted)
     if (!text.includes('<a href=')) {
+      // Handle all URLs - both standalone and with preceding text
       text = text.replace(
-        /^(-?\s*)(.+?):?\s*(https?:\/\/[^\s]+)/,
-        (_, prefix, linkText, url) => {
-          const linkTextCleaned = linkText.replace(/[\[\]\(\)]/g, '').trim();
-          if (prefix.trim() === '-') {
-            return `- <a href="${url}" class="external-link" target="_blank" rel="noopener">${linkTextCleaned}</a>`;
-          }
-          return `- <a href="${url}" class="external-link" target="_blank" rel="noopener">${linkTextCleaned}</a>`;
+        /(^|\s)(-\s*)?(https?:\/\/[^\s]+)/g,
+        (match, leadingSpace, prefix, url) => {
+          const link = this.createLink(url, url, true);
+          const result = prefix ? `- ${link}` : link;
+          return leadingSpace + result;
         },
       );
     }
 
-    // If text was marked as faded, wrap in styled span
+    // Step 6: Apply fade effect if needed
     if (isFaded) {
       text = `<span style="color: gray; opacity: 0.4;">${text}</span>`;
     }
@@ -221,18 +232,95 @@ export default class NoteScannerPlugin extends Plugin {
     return text;
   }
 
-  // Get folder priority index for sorting
-  getFolderPriority(filePath: string): number {
-    // Extract the folder path from the file path
-    const folderPath = filePath.includes('/')
+  // Helper: Check if a file should be excluded from search
+  private isFileExcluded(filePath: string): boolean {
+    return this.settings.excludedFolders.some(
+      (folder) => filePath.startsWith(folder + '/') || filePath === folder,
+    );
+  }
+
+  // Helper: Extract folder path from file path
+  private getFolderFromPath(filePath: string): string {
+    return filePath.includes('/')
       ? filePath.substring(0, filePath.lastIndexOf('/'))
       : '';
+  }
 
-    // Find the index in prioritizedFolders array
+  // Helper: Search lines in file content
+  private searchLinesInFile(
+    lines: string[],
+    searchTerms: string[],
+    file: TFile,
+  ): Array<{ line: string; lineNumber: number }> {
+    const matches: Array<{ line: string; lineNumber: number }> = [];
+    let inDataviewjsBlock = false;
+
+    lines.forEach((line, index) => {
+      const trimmedLine = line.trim();
+
+      // Track dataviewjs code blocks
+      if (trimmedLine.startsWith('```dataviewjs')) {
+        inDataviewjsBlock = true;
+        return;
+      }
+      if (inDataviewjsBlock && trimmedLine.startsWith('```')) {
+        inDataviewjsBlock = false;
+        return;
+      }
+      if (inDataviewjsBlock) return;
+
+      // Check if all search terms match
+      const lineLower = line.toLowerCase();
+      const matchesAll = searchTerms.every((term) => lineLower.includes(term));
+
+      if (matchesAll && trimmedLine.length > 0) {
+        matches.push({
+          line: trimmedLine,
+          lineNumber: index + 1,
+        });
+      }
+    });
+
+    return matches;
+  }
+
+  // Helper: Format a single search result
+  private formatSearchResult(result: {
+    file: string;
+    filePath: string;
+    line: string;
+    lineNumber: number;
+  }): string {
+    // Truncate and convert links
+    let displayLine = result.line;
+    if (displayLine.length > 500) {
+      displayLine = displayLine.substring(0, 500) + '...';
+    }
+    displayLine = this.convertWikiLinksToHTML(displayLine);
+
+    // Build result HTML
+    const folderName = this.getFolderFromPath(result.filePath);
+
+    if (result.lineNumber === 0) {
+      // File name match
+      return `<a href="#" class="internal-link" data-file="${result.file}" data-filepath="${result.filePath}">📄 ${result.file}</a>\n${displayLine}\n\n`;
+    } else {
+      // Line match
+      const locationText = folderName
+        ? `(${folderName}, line ${result.lineNumber})`
+        : `(line ${result.lineNumber})`;
+      return `<a href="#" class="internal-link" data-file="${result.file}" data-filepath="${result.filePath}" data-line="${result.lineNumber}">${result.file}</a> ${locationText}\n${displayLine}\n\n`;
+    }
+  }
+
+  // Get folder priority index for sorting
+  getFolderPriority(filePath: string): number {
+    const folderPath = this.getFolderFromPath(filePath);
+
     const priorityIndex = this.settings.prioritizedFolders.findIndex(
       (folder) => {
-        // Empty string, '/', 'root', or 'Root' represents root folder
         const folderLower = folder.toLowerCase();
+        // Empty string, '/', 'root', or 'Root' represents root folder
         if (folder === '' || folder === '/' || folderLower === 'root') {
           return folderPath === '';
         }
@@ -241,7 +329,6 @@ export default class NoteScannerPlugin extends Plugin {
       },
     );
 
-    // Return the index if found, otherwise return a large number for lowest priority
     return priorityIndex === -1 ? 9999 : priorityIndex;
   }
 
@@ -251,9 +338,8 @@ export default class NoteScannerPlugin extends Plugin {
     currentFileOnly: boolean = false,
     currentFilePath?: string,
   ): Promise<string> {
+    // Filter files based on search scope
     let files = this.app.vault.getMarkdownFiles();
-
-    // If searching current file only, filter to just that file
     if (currentFileOnly && currentFilePath) {
       files = files.filter((file) => file.path === currentFilePath);
       if (files.length === 0) {
@@ -261,6 +347,13 @@ export default class NoteScannerPlugin extends Plugin {
       }
     }
 
+    // Parse search query
+    const searchTerms = query
+      .toLowerCase()
+      .split(' ')
+      .filter((term) => term.length > 0);
+
+    // Collect search results
     const results: Array<{
       file: string;
       filePath: string;
@@ -268,31 +361,20 @@ export default class NoteScannerPlugin extends Plugin {
       lineNumber: number;
       mtime: number;
     }> = [];
-    const searchTerms = query
-      .toLowerCase()
-      .split(' ')
-      .filter((term) => term.length > 0);
 
     for (const file of files) {
-      // Skip files in excluded folders (unless searching current file only)
-      if (!currentFileOnly) {
-        const isExcluded = this.settings.excludedFolders.some(
-          (folder) =>
-            file.path.startsWith(folder + '/') || file.path === folder,
-        );
-        if (isExcluded) {
-          continue;
-        }
+      // Skip excluded folders
+      if (!currentFileOnly && this.isFileExcluded(file.path)) {
+        continue;
       }
 
-      // Check if file name matches search terms
+      // Check for file name match
       const fileNameLower = file.basename.toLowerCase();
       const filePathLower = file.path.toLowerCase();
       const fileNameMatches = searchTerms.every(
         (term) => fileNameLower.includes(term) || filePathLower.includes(term),
       );
 
-      // If file name matches, add it as a result
       if (fileNameMatches) {
         results.push({
           file: file.basename,
@@ -303,99 +385,39 @@ export default class NoteScannerPlugin extends Plugin {
         });
       }
 
+      // Search file content
       const content = await this.app.vault.read(file);
       const lines = content.split('\n');
+      const lineMatches = this.searchLinesInFile(lines, searchTerms, file);
 
-      let inDataviewjsBlock = false;
-
-      lines.forEach((line, index) => {
-        const trimmedLine = line.trim();
-
-        // Check if we're starting a dataviewjs block
-        if (trimmedLine.startsWith('```dataviewjs')) {
-          inDataviewjsBlock = true;
-          return; // Skip this line
-        }
-
-        // Check if we're ending a code block
-        if (inDataviewjsBlock && trimmedLine.startsWith('```')) {
-          inDataviewjsBlock = false;
-          return; // Skip this line
-        }
-
-        // If we're inside a dataviewjs block, skip this line
-        if (inDataviewjsBlock) {
-          return;
-        }
-
-        const lineLower = line.toLowerCase();
-        // Check if all search terms are present in the line
-        const matchesAll = searchTerms.every((term) =>
-          lineLower.includes(term),
-        );
-
-        if (matchesAll && line.trim().length > 0) {
-          results.push({
-            file: file.basename,
-            filePath: file.path,
-            line: line.trim(),
-            lineNumber: index + 1,
-            mtime: file.stat.mtime,
-          });
-        }
+      // Add line matches to results
+      lineMatches.forEach((match) => {
+        results.push({
+          file: file.basename,
+          filePath: file.path,
+          line: match.line,
+          lineNumber: match.lineNumber,
+          mtime: file.stat.mtime,
+        });
       });
     }
 
-    // Sort results by folder priority, then by updated date (desc)
+    // Sort by priority, then by date
     results.sort((a, b) => {
-      const aPriority = this.getFolderPriority(a.filePath);
-      const bPriority = this.getFolderPriority(b.filePath);
-
-      // First sort by priority
-      if (aPriority !== bPriority) {
-        return aPriority - bPriority;
-      }
-
-      // Then sort by updated date (descending - newest first)
-      return b.mtime - a.mtime;
+      const priorityDiff = this.getFolderPriority(a.filePath) - this.getFolderPriority(b.filePath);
+      return priorityDiff !== 0 ? priorityDiff : b.mtime - a.mtime;
     });
 
-    // Format results
+    // Format output
     if (results.length === 0) {
       return 'No results found.';
     }
 
+    const limitedResults = results.slice(0, 50);
     let response = `Found ${results.length} result(s):\n\n`;
 
-    // Limit to top 50 results
-    const limitedResults = results.slice(0, 50);
-
     limitedResults.forEach((result) => {
-      // Truncate long lines
-      let displayLine = result.line;
-      if (displayLine.length > 150) {
-        displayLine = displayLine.substring(0, 150) + '...';
-      }
-
-      // Convert markdown links in the line content to HTML
-      displayLine = this.convertWikiLinksToHTML(displayLine);
-
-      // Extract folder name from file path
-      const folderName = result.filePath.includes('/')
-        ? result.filePath.substring(0, result.filePath.lastIndexOf('/'))
-        : '';
-
-      // Include file path in the link data attribute so we can find it later
-      // For file name matches (lineNumber === 0), add 📄 icon to the title
-      if (result.lineNumber === 0) {
-        response += `<a href="#" class="internal-link" data-file="${result.file}" data-filepath="${result.filePath}">📄 ${result.file}</a>\n${displayLine}\n\n`;
-      } else {
-        // Display folder name with line number if folder exists
-        const locationText = folderName
-          ? `(${folderName}, line ${result.lineNumber})`
-          : `(line ${result.lineNumber})`;
-        response += `<a href="#" class="internal-link" data-file="${result.file}" data-filepath="${result.filePath}" data-line="${result.lineNumber}">${result.file}</a> ${locationText}\n${displayLine}\n\n`;
-      }
+      response += this.formatSearchResult(result);
     });
 
     if (results.length > 50) {
