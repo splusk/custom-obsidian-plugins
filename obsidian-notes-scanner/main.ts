@@ -162,8 +162,21 @@ export default class NoteScannerPlugin extends Plugin {
     return url.startsWith('http://') || url.startsWith('https://');
   }
 
+  // Helper: Extract hostname from URL
+  private getHostname(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.hostname;
+    } catch {
+      return 'link';
+    }
+  }
+
   // Convert [[FileName]] wiki links and markdown links to clickable HTML links
-  convertWikiLinksToHTML(text: string): string {
+  convertWikiLinksToHTML(
+    text: string,
+    fileContext?: { file: string; filePath: string; lineNumber: number },
+  ): string {
     const trimmedText = text.trim();
     const isFaded = trimmedText.includes('~~') || trimmedText.startsWith('- [x]');
 
@@ -217,7 +230,16 @@ export default class NoteScannerPlugin extends Plugin {
       text = text.replace(
         /(^|\s)(-\s*)?(https?:\/\/[^\s]+)/g,
         (match, leadingSpace, prefix, url) => {
-          const link = this.createLink(url, url, true);
+          let link: string;
+          if (fileContext) {
+            // Create internal link to file location with hostname as text
+            const hostname = this.getHostname(url);
+            const linkText = `link in file (${hostname})`;
+            link = `<a href="#" class="internal-link" data-file="${fileContext.file}" data-filepath="${fileContext.filePath}" data-line="${fileContext.lineNumber}">${linkText}</a>`;
+          } else {
+            // Create external link with URL as text
+            link = this.createLink(url, url, true);
+          }
           const result = prefix ? `- ${link}` : link;
           return leadingSpace + result;
         },
@@ -296,7 +318,11 @@ export default class NoteScannerPlugin extends Plugin {
     if (displayLine.length > 500) {
       displayLine = displayLine.substring(0, 500) + '...';
     }
-    displayLine = this.convertWikiLinksToHTML(displayLine);
+    displayLine = this.convertWikiLinksToHTML(displayLine, {
+      file: result.file,
+      filePath: result.filePath,
+      lineNumber: result.lineNumber,
+    });
 
     // Build result HTML
     const folderName = this.getFolderFromPath(result.filePath);
@@ -989,6 +1015,8 @@ class NoteScannerView extends ItemView {
     this.submitBtn.setText(this.getSearchButtonText());
     // Hide reset button after clearing
     this.resetBtn.style.display = 'none';
+    // Expand input section if collapsed
+    this.toggleInputSection();
   }
 
   toggleInputSection() {
