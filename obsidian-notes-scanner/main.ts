@@ -206,6 +206,12 @@ export default class NoteScannerPlugin extends Plugin {
     text = text.replace(
       /\[([^[]*?)!\[[^\]]*\]\([^)]*\)\]\(([^)]+)\)/g,
       (_, linkText, url) => {
+        // Check if URL was truncated (ends with ...)
+        if (url.endsWith('...') && fileContext) {
+          const hostname = this.getHostname(url.replace(/\.\.\.$/, ''));
+          const internalLinkText = `link in file (${hostname})`;
+          return `<a href="#" class="internal-link" data-file="${fileContext.file}" data-filepath="${fileContext.filePath}" data-line="${fileContext.lineNumber}">${internalLinkText}</a>`;
+        }
         const cleanText = linkText.trim();
         return this.createLink(
           url,
@@ -217,9 +223,15 @@ export default class NoteScannerPlugin extends Plugin {
     );
 
     // Regular markdown links: [text](url)
-    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, url) =>
-      this.createLink(url, linkText, this.isExternalUrl(url), url),
-    );
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, url) => {
+      // Check if URL was truncated (ends with ...)
+      if (url.endsWith('...') && fileContext) {
+        const hostname = this.getHostname(url.replace(/\.\.\.$/, ''));
+        const internalLinkText = `link in file (${hostname})`;
+        return `<a href="#" class="internal-link" data-file="${fileContext.file}" data-filepath="${fileContext.filePath}" data-line="${fileContext.lineNumber}">${internalLinkText}</a>`;
+      }
+      return this.createLink(url, linkText, this.isExternalUrl(url), url);
+    });
 
     // Step 4: Clean up checkbox markers
     text = text.replace(/\[(x|X| )\]/g, '');
@@ -229,7 +241,7 @@ export default class NoteScannerPlugin extends Plugin {
       // Handle all URLs - both standalone and with preceding text
       text = text.replace(
         /(^|\s)(-\s*)?(https?:\/\/[^\s]+)/g,
-        (match, leadingSpace, prefix, url) => {
+        (_, leadingSpace, prefix, url) => {
           let link: string;
           if (fileContext) {
             // Create internal link to file location with hostname as text
@@ -272,7 +284,6 @@ export default class NoteScannerPlugin extends Plugin {
   private searchLinesInFile(
     lines: string[],
     searchTerms: string[],
-    file: TFile,
   ): Array<{ line: string; lineNumber: number }> {
     const matches: Array<{ line: string; lineNumber: number }> = [];
     let inDataviewjsBlock = false;
@@ -317,7 +328,19 @@ export default class NoteScannerPlugin extends Plugin {
     let displayLine = result.line;
     if (displayLine.length > 500) {
       displayLine = displayLine.substring(0, 500) + '...';
+
+      // Fix incomplete markdown links caused by truncation
+      // Pattern: [text](url without closing parenthesis
+      displayLine = displayLine.replace(
+        /\[([^\]]+)\]\((https?:\/\/[^)\s]*(?:\.\.\.)?)$/,
+        (_, _linkText, url) => {
+          const hostname = this.getHostname(url.replace(/\.\.\.?$/, ''));
+          const internalLinkText = `link in file (${hostname})`;
+          return `<a href="#" class="internal-link" data-file="${result.file}" data-filepath="${result.filePath}" data-line="${result.lineNumber}">${internalLinkText}</a>`;
+        },
+      );
     }
+
     displayLine = this.convertWikiLinksToHTML(displayLine, {
       file: result.file,
       filePath: result.filePath,
@@ -414,7 +437,7 @@ export default class NoteScannerPlugin extends Plugin {
       // Search file content
       const content = await this.app.vault.read(file);
       const lines = content.split('\n');
-      const lineMatches = this.searchLinesInFile(lines, searchTerms, file);
+      const lineMatches = this.searchLinesInFile(lines, searchTerms);
 
       // Add line matches to results
       lineMatches.forEach((match) => {
@@ -1054,26 +1077,25 @@ class ClaudeCodeSettingTab extends PluginSettingTab {
 
     containerEl.createEl('h2', { text: 'Note Scanner Integration Settings' });
 
-    // AI toggle - disabled on mobile
-    new Setting(containerEl)
-      .setName('Use AI')
-      .setDesc(
-        Platform.isMobile
-          ? 'AI-powered search is only available on desktop. Mobile uses fuzzy search.'
-          : 'Enable AI-powered search using your AI Modeal. When disabled, uses simple fuzzy search.',
-      )
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.useAI)
-          .setDisabled(Platform.isMobile)
-          .onChange(async (value) => {
-            this.plugin.settings.useAI = value;
-            await this.plugin.saveSettings();
-          }),
-      );
-
     // Hide AI-specific settings on mobile
     if (Platform.isDesktop) {
+      new Setting(containerEl)
+        .setName('Use AI')
+        .setDesc(
+          Platform.isMobile
+            ? 'AI-powered search is only available on desktop. Mobile uses fuzzy search.'
+            : 'Enable AI-powered search using your AI Modeal. When disabled, uses simple fuzzy search.',
+        )
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.useAI)
+            .setDisabled(Platform.isMobile)
+            .onChange(async (value) => {
+              this.plugin.settings.useAI = value;
+              await this.plugin.saveSettings();
+            }),
+        );
+      
       new Setting(containerEl)
         .setName('Vault Path')
         .setDesc('Path to your Obsidian vault (default: auto-detected)')
