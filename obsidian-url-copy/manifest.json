@@ -1,0 +1,9 @@
+{
+	"id": "obsidian-url-copy",
+	"name": "Copy URL from Current Line",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Copy URL from the current line where the cursor is positioned",
+	"author": "skakau",
+	"isDesktopOnly": false
+}

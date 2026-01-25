@@ -1,0 +1,14 @@
+{
+  "name": "obsidian-url-copy",
+  "version": "1.0.0",
+  "description": "Copy the first URL from the current line",
+  "main": "main.ts",
+  "scripts": {
+    "dev": "esbuild main.ts --bundle --outfile=main.js --format=cjs --platform=browser --external:obsidian --watch",
+    "build": "esbuild main.ts --bundle --outfile=main.js --format=cjs --platform=browser --external:obsidian"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  }
+}
