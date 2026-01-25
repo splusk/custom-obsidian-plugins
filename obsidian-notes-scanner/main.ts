@@ -32,20 +32,11 @@ interface NodeScannerPluginSettings {
 }
 
 const DEFAULT_SETTINGS: NodeScannerPluginSettings = {
-  vaultPath: '~/Documents/Obsidian/Kry',
-  claudeCodePath: '~/.nvm/versions/node/v20.15.1/bin/claude',
+  vaultPath: '',
+  claudeCodePath: '',
   useAI: false,
-  excludedFolders: [
-    'archive',
-    '.obsidian',
-    'Bookmarks',
-    'attachments',
-    'Templates',
-    'Examples',
-    'src',
-    '1-1',
-  ],
-  prioritizedFolders: ['/', 'Notes'],
+  excludedFolders: ['archive', '.obsidian'],
+  prioritizedFolders: ['/', 'Daily Notes'],
   autoCloseDelay: 10000,
 };
 
