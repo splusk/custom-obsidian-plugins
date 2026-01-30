@@ -23,11 +23,11 @@ export default class LinkWithIconPlugin extends Plugin {
 				const selectedText = editor.getSelection();
 				const linkSyntax = `[${selectedText}]()`;
 				this.lineSyntax = this.getLinkSyntax(editor, selectedText);
-				const cursor = editor.getCursor();
+				const cursor = editor.getCursor('from');
 				editor.replaceSelection(linkSyntax);
 				const newCursor = {
 					line: cursor.line,
-					ch: cursor.ch + selectedText.length + 3,
+					ch: cursor.ch + 1 + selectedText.length + 2,
 				};
 				editor.setCursor(newCursor);
 			}
@@ -64,7 +64,7 @@ export default class LinkWithIconPlugin extends Plugin {
 	handlePaste = (pastedText: string, editor: Editor) => {
 		if (!this.lineSyntax) {
 			const selectedText = editor.getSelection();
-			let textToInsert = pastedText; 
+			let textToInsert = pastedText;
 			if (selectedText.length > 0) {
 				// This flow support a direct paste on a selection
 				textToInsert = this.buildLink(pastedText, `[${selectedText}]()`);
@@ -75,7 +75,11 @@ export default class LinkWithIconPlugin extends Plugin {
 			const from = editor.getCursor('from');
 			const newCursorPos = { from: { line: from.line, ch: 0 }, to: { line: from.line, ch: this.lineSyntax.length } };
 			editor.replaceRange(link, newCursorPos.from, newCursorPos.to);
-			editor.setCursor({ line: newCursorPos.from.line, ch: link.length });
+			// Find the end of the markdown link to position cursor after closing parenthesis
+			const linkPattern = /\[[^\]]*\]\([^)]*\)/;
+			const match = link.match(linkPattern);
+			const cursorPos = match && typeof match.index === 'number' ? match.index + match[0].length : link.length;
+			editor.setCursor({ line: newCursorPos.from.line, ch: cursorPos });
 			this.lineSyntax = undefined;
 		}
 	}
