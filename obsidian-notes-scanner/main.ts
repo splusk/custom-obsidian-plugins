@@ -399,7 +399,7 @@ export default class NoteScannerPlugin extends Plugin {
       filePath: string;
       line: string;
       lineNumber: number;
-      mtime: number;
+      ctime: number;
     }> = [];
 
     for (const file of files) {
@@ -421,7 +421,7 @@ export default class NoteScannerPlugin extends Plugin {
           filePath: file.path,
           line: `File name match: ${file.path}`,
           lineNumber: 0,
-          mtime: file.stat.mtime,
+          ctime: file.stat.ctime,
         });
       }
 
@@ -437,16 +437,13 @@ export default class NoteScannerPlugin extends Plugin {
           filePath: file.path,
           line: match.line,
           lineNumber: match.lineNumber,
-          mtime: file.stat.mtime,
+          ctime: file.stat.ctime,
         });
       });
     }
 
-    // Sort by priority, then by date
-    results.sort((a, b) => {
-      const priorityDiff = this.getFolderPriority(a.filePath) - this.getFolderPriority(b.filePath);
-      return priorityDiff !== 0 ? priorityDiff : b.mtime - a.mtime;
-    });
+    // Sort by created date (newest first)
+    results.sort((a, b) => b.ctime - a.ctime);
 
     // Format output
     if (results.length === 0) {
